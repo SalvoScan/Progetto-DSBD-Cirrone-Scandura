@@ -1,0 +1,112 @@
+version: '3'
+services:
+  etlpipeline:
+    container_name: etlpipeline
+    image: lucacirrone/dsbd_etlpipeline
+    networks: 
+      - ragnatela
+    depends_on:
+      - kafka
+      - monitoring
+
+  exporter:
+    container_name: exporter
+    image: lucacirrone/dsbd_exporter
+    ports:
+      - 9000:9000
+    networks: 
+      - ragnatela
+    depends_on:
+      - monitoring
+    restart: always
+
+  monitoring:
+    container_name: monitoring
+    image: lucacirrone/dsbd_etlmonitoring
+    ports:
+      - 8500:8500
+    networks: 
+      - ragnatela
+
+  prometheus:
+    container_name: prometheus
+    image: bitnami/prometheus:latest
+    ports:
+      - 9090:9090
+    networks: 
+      - ragnatela
+    volumes:
+    - ./prometheus-conf/:/etc/prometheus/
+    command:
+    - '--config.file=/etc/prometheus/prometheus.yml'
+
+  slamanager:
+    container_name: slamanager
+    image: lucacirrone/dsbd_slamanager
+    ports:
+      - 8000:8000
+    networks: 
+      - ragnatela
+
+  retrieval:
+    container_name: retrieval
+    image: lucacirrone/dsbd_retrieval
+    ports:
+      - 5000:5000
+    networks: 
+      - ragnatela
+    depends_on:
+      - mysqldb
+
+  mysqldb:
+    container_name: mysqldb
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: metricdb
+    networks: 
+      - ragnatela
+    volumes:
+      - metricvol:/var/lib/mysql
+
+  storage:
+    container_name: storage
+    image: lucacirrone/dsbd_storage
+    networks: 
+      - ragnatela
+    depends_on:
+      - mysqldb
+      - kafka
+
+  zookeeper:
+    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks: 
+      - ragnatela
+
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks: 
+      - ragnatela
+
+networks:
+  ragnatela:
+    driver: bridge
+
+volumes:
+  metricvol:
